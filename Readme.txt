@@ -1,0 +1,1 @@
+This repo consists the files for the electronic price display project that i showcased on youtube video 
