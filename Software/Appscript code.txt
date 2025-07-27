@@ -1,0 +1,112 @@
+const firebaseUrl = "Insert your firebase URL here ";
+
+function onEdit(e) {
+  const sheet = e.source.getActiveSheet();
+  const range = e.range;
+
+  if (sheet.getName() === "Products" && range.getColumn() >= 1 && range.getColumn() <= 3) {
+    const row = range.getRow();
+    const barcode = sheet.getRange(row, 1).getValue();
+    const product = sheet.getRange(row, 2).getValue();
+    const price = sheet.getRange(row, 3).getValue();
+
+    if (barcode === "") {
+      // If barcode cell is empty (e.g. row deleted), delete from Firebase
+      deleteFromFirebase(barcode);
+    } else {
+      // Otherwise, update or add the product
+      updateFirebase(barcode, product, price);
+    }
+  }
+}
+
+function updateFirebase(barcode, product, price) {
+  const payload = {
+    "product": product,
+    "price": price
+  };
+
+  const options = {
+    "method": "put",
+    "contentType": "application/json",
+    "payload": JSON.stringify(payload)
+  };
+
+  const firebaseEndpoint = firebaseUrl + "/" + barcode + ".json";
+
+  try {
+    const response = UrlFetchApp.fetch(firebaseEndpoint, options);
+    Logger.log("Updated Firebase: " + response.getContentText());
+  } catch (error) {
+    Logger.log("Error updating Firebase: " + error.message);
+  }
+}
+
+function deleteFromFirebase(barcode) {
+  const firebaseEndpoint = firebaseUrl + "/" + barcode + ".json";
+
+  const options = {
+    "method": "delete"
+  };
+
+  try {
+    const response = UrlFetchApp.fetch(firebaseEndpoint, options);
+    Logger.log("Deleted from Firebase: " + response.getContentText());
+  } catch (error) {
+    Logger.log("Error deleting from Firebase: " + error.message);
+  }
+}
+
+function syncAllToFirebase() {
+  const firebaseUrl = "Insert your firebase URL here";
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Products");
+  const data = sheet.getDataRange().getValues();
+
+  for (let i = 1; i < data.length; i++) { // skip header row (i=1)
+    const row = data[i];
+    const barcode = row[0];
+    const product = row[1];
+    const price = row[2];
+
+    if (barcode && product && price !== "") {
+      const payload = {
+        "product": product,
+        "price": price
+      };
+
+      const options = {
+        "method": "put",
+        "contentType": "application/json",
+        "payload": JSON.stringify(payload)
+      };
+
+      const firebaseEndpoint = firebaseUrl + "/" + barcode + ".json";
+      try {
+        const response = UrlFetchApp.fetch(firebaseEndpoint, options);
+        Logger.log("Synced barcode " + barcode);
+      } catch (error) {
+        Logger.log("Error syncing " + barcode + ": " + error.message);
+      }
+    }
+  }
+}
+function onChange(e) {
+  if (e.changeType === 'REMOVE_ROW') {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Products");
+    const barcodes = sheet.getRange(2, 1, sheet.getLastRow() - 1).getValues().flat(); // skip header
+    const firebaseEndpoint = firebaseUrl + ".json";
+    
+    try {
+      const response = UrlFetchApp.fetch(firebaseEndpoint);
+      const firebaseData = JSON.parse(response.getContentText());
+
+      for (let barcode in firebaseData) {
+        if (!barcodes.includes(barcode)) {
+          deleteFromFirebase(barcode); // delete only missing one(s)
+        }
+      }
+    } catch (err) {
+      Logger.log("Error during delete sync: " + err.message);
+    }
+  }
+}
